@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Aphelion Station</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- MENU -->
+    <section id="screen-menu" class="screen active">
+      <div class="panel narrow">
+        <h1>APHELION STATION</h1>
+        <p class="tagline">A social deduction game. Complete objectives. Observe. Lie. Investigate. Survive.</p>
+        <label>Your name</label>
+        <input id="input-name" maxlength="16" placeholder="Player name" />
+        <div class="row">
+          <button id="btn-create" class="primary">Create Match</button>
+        </div>
+        <div class="divider">or join a match</div>
+        <div class="row">
+          <input id="input-code" maxlength="5" placeholder="ROOM CODE" style="text-transform:uppercase" />
+          <button id="btn-join">Join</button>
+        </div>
+        <p id="menu-error" class="error"></p>
+      </div>
+    </section>
+
+    <!-- LOBBY -->
+    <section id="screen-lobby" class="screen">
+      <div class="panel">
+        <div class="lobby-header">
+          <h2>Room <span id="lobby-code">-----</span></h2>
+          <button id="btn-leave" class="ghost">Leave</button>
+        </div>
+        <div class="lobby-body">
+          <div class="lobby-players">
+            <h3>Players (<span id="lobby-count">0</span>/20)</h3>
+            <ul id="lobby-player-list"></ul>
+            <button id="btn-ready" class="primary wide">Ready Up</button>
+          </div>
+          <div class="lobby-settings" id="host-settings">
+            <h3>Match Settings <span class="host-only-tag">(host only)</span></h3>
+            <label>Preset</label>
+            <select id="set-preset">
+              <option value="CLASSIC">Classic</option>
+              <option value="CASUAL">Casual</option>
+              <option value="CHAOS">Chaos</option>
+              <option value="DETECTIVE">Detective</option>
+              <option value="QUICK_MATCH">Quick Match</option>
+            </select>
+            <label>Impostors: <span id="val-impostors">2</span></label>
+            <input type="range" id="set-impostors" min="1" max="4" value="2" />
+            <label>Tasks per player: <span id="val-tasks">5</span></label>
+            <input type="range" id="set-tasks" min="1" max="10" value="5" />
+            <label>Movement speed: <span id="val-speed">1.0x</span></label>
+            <input type="range" id="set-speed" min="0.5" max="2" step="0.25" value="1" />
+            <label><input type="checkbox" id="set-confirm" checked /> Confirm ejects (show role)</label>
+            <label><input type="checkbox" id="set-anon" /> Anonymous votes in chat</label>
+            <button id="btn-start" class="primary wide">Start Match</button>
+            <p class="hint">Need 4-20 players, all ready.</p>
+          </div>
+        </div>
+        <p id="lobby-error" class="error"></p>
+      </div>
+    </section>
+
+    <!-- ROLE REVEAL -->
+    <section id="screen-role" class="screen">
+      <div class="role-card" id="role-card">
+        <div class="role-faction" id="role-faction">CREW</div>
+        <div class="role-name" id="role-name">Crewmate</div>
+        <div class="role-desc" id="role-desc"></div>
+        <div class="role-target" id="role-target"></div>
+        <button id="btn-role-continue" class="primary">Let's go</button>
+      </div>
+    </section>
+
+    <!-- GAME -->
+    <section id="screen-game" class="screen">
+      <canvas id="game-canvas"></canvas>
+
+      <div class="hud-top-left" id="hud-role-chip"></div>
+      <div class="hud-top-right" id="hud-tasks"></div>
+      <div class="hud-sabotage-banner" id="hud-sabotage-banner" hidden></div>
+
+      <div class="hud-bottom">
+        <div class="hud-abilities" id="hud-abilities"></div>
+        <div class="hud-actions">
+          <button id="btn-task" class="action-btn" hidden>Do Task</button>
+          <button id="btn-report" class="action-btn" hidden>Report Body</button>
+          <button id="btn-emergency" class="action-btn" hidden>Emergency Meeting</button>
+          <button id="btn-vent" class="action-btn" hidden>Enter Vent</button>
+          <button id="btn-fix" class="action-btn" hidden>Fix Sabotage</button>
+          <button id="btn-sabotage" class="action-btn" hidden>Sabotage</button>
+        </div>
+      </div>
+
+      <div id="vent-picker" class="overlay-box" hidden>
+        <h3>Travel to...</h3>
+        <div id="vent-options"></div>
+        <button id="btn-vent-cancel" class="ghost">Cancel</button>
+      </div>
+
+      <div id="sabotage-picker" class="overlay-box" hidden>
+        <h3>Sabotage</h3>
+        <div id="sabotage-options"></div>
+        <button id="btn-sabotage-cancel" class="ghost">Cancel</button>
+      </div>
+
+      <div id="task-overlay" class="overlay-box task-overlay" hidden></div>
+
+      <div id="ability-toast" class="toast" hidden></div>
+    </section>
+
+    <!-- MEETING -->
+    <section id="screen-meeting" class="screen">
+      <div class="meeting-wrap">
+        <div class="meeting-header">
+          <h2 id="meeting-title">Emergency Meeting</h2>
+          <div id="meeting-timer">30</div>
+        </div>
+        <div class="meeting-body">
+          <div class="meeting-players" id="meeting-players"></div>
+          <div class="meeting-chat">
+            <div id="chat-log" class="chat-log"></div>
+            <div class="chat-input-row">
+              <input id="chat-input" maxlength="240" placeholder="Say something..." />
+              <button id="btn-chat-send">Send</button>
+            </div>
+          </div>
+        </div>
+        <div id="vote-result" class="vote-result" hidden></div>
+      </div>
+    </section>
+
+    <!-- END SCREEN -->
+    <section id="screen-end" class="screen">
+      <div class="panel">
+        <h1 id="end-banner">CREW WINS</h1>
+        <p id="end-reason"></p>
+        <h3>Roles</h3>
+        <ul id="end-roster"></ul>
+        <h3>Timeline</h3>
+        <div id="end-timeline" class="timeline"></div>
+        <button id="btn-play-again" class="primary wide">Back to Lobby</button>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/net.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/render.js"></script>
+  <script src="/js/ui/lobby.js"></script>
+  <script src="/js/ui/tasks.js"></script>
+  <script src="/js/ui/meeting.js"></script>
+  <script src="/js/game.js"></script>
+</body>
+</html>
