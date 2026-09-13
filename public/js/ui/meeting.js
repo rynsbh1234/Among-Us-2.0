@@ -29,9 +29,16 @@ const MeetingUI = {
       : `${payload.callerName} reported a body in ${payload.roomName}`;
     document.getElementById("chat-log").innerHTML = "";
     document.getElementById("vote-result").hidden = true;
+    document.getElementById("ejection-scene").hidden = true;
     App.showScreen("meeting");
     this.renderPlayers();
     this.startTimerLoop();
+
+    if (payload.reason === "emergency") {
+      const screen = document.getElementById("screen-meeting");
+      screen.classList.add("alarm");
+      setTimeout(() => screen.classList.remove("alarm"), 1300);
+    }
   },
 
   startVoting(payload) {
@@ -104,15 +111,38 @@ const MeetingUI = {
 
   showResult(payload) {
     if (this.timerHandle) clearInterval(this.timerHandle);
-    const box = document.getElementById("vote-result");
-    box.hidden = false;
-    box.textContent = payload.ejectedId
-      ? `${payload.ejectedName} was ejected. ${payload.revealText}`
-      : "No one was ejected.";
+    const ejectedPlayer = payload.ejectedId && this.state
+      ? this.state.alive.find((p) => p.id === payload.ejectedId)
+      : null;
     this.state = null;
+
+    const box = document.getElementById("vote-result");
+    const scene = document.getElementById("ejection-scene");
+
+    const finish = () => {
+      box.hidden = false;
+      box.textContent = payload.ejectedId
+        ? `${payload.ejectedName} was ejected. ${payload.revealText}`
+        : "No one was ejected.";
+      setTimeout(() => {
+        if (App.current === "meeting") App.showScreen("game");
+      }, 3200);
+    };
+
+    if (!payload.ejectedId) return finish();
+
+    const dot = document.getElementById("ejection-dot");
+    const text = document.getElementById("ejection-text");
+    dot.style.background = (ejectedPlayer && ejectedPlayer.color) || "#ccc";
+    dot.style.animation = "none";
+    void dot.offsetHeight;
+    dot.style.animation = "";
+    text.textContent = `${payload.ejectedName} was ejected...`;
+    scene.hidden = false;
     setTimeout(() => {
-      if (App.current === "meeting") App.showScreen("game");
-    }, 3500);
+      scene.hidden = true;
+      finish();
+    }, 2200);
   },
 };
 

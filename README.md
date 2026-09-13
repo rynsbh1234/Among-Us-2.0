@@ -64,17 +64,33 @@ a press-and-hold swipe window, and a memorize-the-order circuit puzzle.
 
 **Host settings & presets** — impostor count, tasks per player, movement
 speed, confirm-ejects, anonymous votes, plus five presets (Classic, Casual,
-Chaos, Detective, Quick Match). Role pools and neutral roles are
-configurable in `server/presets.js` today; see roadmap for lobby-UI
-exposure.
+Chaos, Detective, Quick Match) — and per-role checkboxes so the host can
+pick exactly which crew/impostor/neutral roles are in the pool for the match.
+
+**Animation & feedback polish** — a full-screen red flash on kills (both for
+the killer and, separately, the moment you're eliminated as the victim),
+cloak/ghost transitions that fade smoothly instead of snapping, a pulsing
+poison-sickness ring, a screen-flash alarm when an emergency meeting is
+called, and a dedicated ejection sequence (the ejected player's color spins
+and flies off-screen before the reveal text shows).
+
+**Mobile touch controls** — on-screen virtual joystick for movement on touch
+devices (auto-detected), with the same tap-to-interact buttons used on
+desktop for tasks/abilities/reporting/etc.
+
+**Progression** — lightweight per-browser stats via `localStorage` (games
+played/won) and 8 achievements (first win, 10 games played, winning as each
+faction/role archetype, etc.), shown on the menu and end screen. This is
+explicitly not a full accounts/economy system — see roadmap.
 
 **End of match** — full role reveal for every player, win/loss per player
-(Survivors can "also win" alongside the main outcome), and a timestamped
-event timeline of the whole match.
+(Survivors can "also win" alongside the main outcome), newly-unlocked
+achievements, and a timestamped event timeline of the whole match.
 
 Verified end-to-end with an automated 4-browser test that plays a full
 match through real socket connections: create → join → ready → start →
-move → complete a task → kill → report → meeting → vote → eject → crew win.
+move → complete a task → kill → report → meeting → vote → eject → crew win →
+progression recorded.
 
 ## Architecture
 
@@ -92,8 +108,10 @@ move → complete a task → kill → report → meeting → vote → eject → 
     players in vents, etc. unless you're allowed to see it).
 - `public/` — vanilla JS + Canvas, no build step. `net.js` (socket wrapper),
   `main.js` (screen flow), `render.js` (canvas draw), `game.js` (input,
-  HUD, proximity actions), `ui/lobby.js`, `ui/tasks.js` (minigames),
-  `ui/meeting.js` (chat/voting).
+  HUD, proximity actions), `touch.js` (mobile joystick), `progression.js`
+  (localStorage stats/achievements), `roles-data.js` (client-side mirror of
+  the role catalog for the lobby checkboxes), `ui/lobby.js`, `ui/tasks.js`
+  (minigames), `ui/meeting.js` (chat/voting/ejection sequence).
 
 ## Known simplifications (and why)
 
@@ -112,23 +130,24 @@ move → complete a task → kill → report → meeting → vote → eject → 
 
 - **Voice chat** (proximity + meeting voice). Needs WebRTC mesh/SFU
   infrastructure; text chat covers the same social-deduction function today.
-- **Cosmetics, progression/XP, and an economy.** No pay-to-win risk this way,
-  but also no hats/pets/unlocks yet.
-- **Matchmaking, friends, parties, profiles/stats.** Only private room codes
-  today.
+- **A real cosmetics/progression economy** (hats, pets, unlocks, XP curves).
+  What exists today is honest per-browser stats + achievements (see above),
+  not an economy — no accounts, nothing purchasable, nothing server-tracked.
+- **Matchmaking, friends, parties, accounts/profiles.** Only private room
+  codes today; stats live in the browser, not on an account.
 - **Replay system** (post-match scrub-through with free camera).
 - **Multiple maps.** One deep map instead of several shallow ones.
-- **Cinematic per-ability animations** (cloak sheet pulling over a
-  character, a Sheriff drawing a weapon, etc.) — abilities work and give
-  clear feedback (toasts, outlines, tints), but they're functional rather
-  than cinematic. This is the highest-value next step if you want the game
-  to *feel* more premium without touching game logic.
-- **Mobile touch controls.** Keyboard-only input right now.
-- **Fine-grained role-pool checkboxes in the lobby UI** — presets and
-  `server/presets.js` cover this; a per-role toggle UI is a small addition.
+- **Fully cinematic per-ability animations** (a cloak sheet visibly pulling
+  over a character in multiple stages, a Sheriff drawing a weapon, a
+  Morphling-style transformation, etc.). What's built now is real animated
+  feedback — fade transitions, pulsing rings, screen flashes, an ejection
+  sequence — just not multi-stage choreographed sequences per ability.
 
 None of this was skipped by accident — the brief asked for a genuinely
 commercial-scope game, and the instruction that came with it was to
 prioritize functional gameplay, movement, multiplayer stability, and social
 deduction over visual polish, progression, and cosmetics. That's the order
-this was built in.
+this was built in, and it's also the order these remaining items would be
+tackled in if you want to keep going — voice chat and a real economy are the
+two that need infrastructure/product decisions (hosting, a database, a
+WebRTC/TURN setup) rather than just more code.

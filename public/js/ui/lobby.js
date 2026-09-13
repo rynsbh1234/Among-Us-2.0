@@ -29,6 +29,10 @@ const Lobby = {
     document.getElementById("set-confirm").checked = s.confirmEjects;
     document.getElementById("set-anon").checked = s.anonymousVotes;
 
+    this.syncRolePoolChecks("pool-crew", s.crewRolePool);
+    this.syncRolePoolChecks("pool-impostor", s.impostorRolePool);
+    this.syncRolePoolChecks("pool-neutral", s.neutralRoles);
+
     const allReady = state.players.length > 0 && state.players.every((p) => p.ready);
     document.getElementById("btn-start").disabled = !(allReady && state.players.length >= 4);
   },
@@ -51,6 +55,39 @@ const Lobby = {
     ["set-impostors", "set-tasks", "set-speed", "set-confirm", "set-anon"].forEach((id) => {
       document.getElementById(id).addEventListener("change", push);
     });
+
+    this.buildRolePoolChecks("pool-crew", ROLE_CATALOG.crew, "crewRolePool");
+    this.buildRolePoolChecks("pool-impostor", ROLE_CATALOG.impostor, "impostorRolePool");
+    this.buildRolePoolChecks("pool-neutral", ROLE_CATALOG.neutral, "neutralRoles");
+  },
+
+  buildRolePoolChecks(containerId, roles, settingKey) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
+    for (const role of roles) {
+      const label = document.createElement("label");
+      label.className = "role-pool-check";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.dataset.roleId = role.id;
+      box.addEventListener("change", () => {
+        const checked = [...container.querySelectorAll("input:checked")].map((el) => el.dataset.roleId);
+        Net.emit("lobby:updateSettings", { [settingKey]: checked });
+      });
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(" " + role.name));
+      container.appendChild(label);
+    }
+  },
+
+  syncRolePoolChecks(containerId, activeIds) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const active = new Set(activeIds || []);
+    for (const box of container.querySelectorAll("input[type=checkbox]")) {
+      const isActive = active.has(box.dataset.roleId);
+      if (document.activeElement !== box) box.checked = isActive;
+    }
   },
 };
 

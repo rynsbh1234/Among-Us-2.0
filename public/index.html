@@ -14,6 +14,7 @@
       <div class="panel narrow">
         <h1>APHELION STATION</h1>
         <p class="tagline">A social deduction game. Complete objectives. Observe. Lie. Investigate. Survive.</p>
+        <p id="menu-stats" class="menu-stats"></p>
         <label>Your name</label>
         <input id="input-name" maxlength="16" placeholder="Player name" />
         <div class="row">
@@ -59,6 +60,21 @@
             <input type="range" id="set-speed" min="0.5" max="2" step="0.25" value="1" />
             <label><input type="checkbox" id="set-confirm" checked /> Confirm ejects (show role)</label>
             <label><input type="checkbox" id="set-anon" /> Anonymous votes in chat</label>
+
+            <h3>Roles in play</h3>
+            <div class="role-pool-group">
+              <div class="role-pool-label">Crew</div>
+              <div id="pool-crew" class="role-pool-checks"></div>
+            </div>
+            <div class="role-pool-group">
+              <div class="role-pool-label">Impostor</div>
+              <div id="pool-impostor" class="role-pool-checks"></div>
+            </div>
+            <div class="role-pool-group">
+              <div class="role-pool-label">Neutral</div>
+              <div id="pool-neutral" class="role-pool-checks"></div>
+            </div>
+
             <button id="btn-start" class="primary wide">Start Match</button>
             <p class="hint">Need 4-20 players, all ready.</p>
           </div>
@@ -113,6 +129,13 @@
       <div id="task-overlay" class="overlay-box task-overlay" hidden></div>
 
       <div id="ability-toast" class="toast" hidden></div>
+      <div id="kill-flash" class="kill-flash" hidden></div>
+
+      <div id="touch-controls" class="touch-controls" hidden>
+        <div id="touch-joystick-zone" class="touch-joystick-zone">
+          <div id="touch-joystick-stick" class="touch-joystick-stick"></div>
+        </div>
+      </div>
     </section>
 
     <!-- MEETING -->
@@ -134,6 +157,10 @@
         </div>
         <div id="vote-result" class="vote-result" hidden></div>
       </div>
+      <div id="ejection-scene" class="ejection-scene" hidden>
+        <div id="ejection-dot" class="ejection-dot"></div>
+        <div id="ejection-text" class="ejection-text"></div>
+      </div>
     </section>
 
     <!-- END SCREEN -->
@@ -143,6 +170,7 @@
         <p id="end-reason"></p>
         <h3>Roles</h3>
         <ul id="end-roster"></ul>
+        <div id="end-achievements"></div>
         <h3>Timeline</h3>
         <div id="end-timeline" class="timeline"></div>
         <button id="btn-play-again" class="primary wide">Back to Lobby</button>
@@ -153,11 +181,14 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/net.js"></script>
+  <script src="/js/roles-data.js"></script>
+  <script src="/js/progression.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/render.js"></script>
   <script src="/js/ui/lobby.js"></script>
   <script src="/js/ui/tasks.js"></script>
   <script src="/js/ui/meeting.js"></script>
   <script src="/js/game.js"></script>
+  <script src="/js/touch.js"></script>
 </body>
 </html>

@@ -63,6 +63,16 @@ const HUD = {
     this._toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
   },
 
+  flash() {
+    const el = document.getElementById("kill-flash");
+    el.hidden = false;
+    el.style.animation = "none";
+    void el.offsetHeight; // restart the CSS animation even if it's still playing
+    el.style.animation = "";
+    clearTimeout(this._flashTimer);
+    this._flashTimer = setTimeout(() => { el.hidden = true; }, 520);
+  },
+
   sabotageBanner(state) {
     const banner = document.getElementById("hud-sabotage-banner");
     const active = state && (state.sabotages.reactor.active || state.sabotages.o2.active || state.sabotages.lights.active || state.sabotages.comms.active);
@@ -90,6 +100,7 @@ const Game = {
 
   begin() {
     App.myTasks = JSON.parse(JSON.stringify(App.youRole.tasks));
+    App.amIAlive = true;
     HUD.renderRoleChip(App.youRole);
     HUD.renderTasks();
     HUD.renderAbilities(App.youRole);
@@ -174,6 +185,7 @@ const Game = {
     }
     Net.emit("player:useAbility", { abilityId, targetId }, (res) => {
       if (!res || res.error) return HUD.toast((res && res.error) || "Failed.");
+      if (res.fx === "kill" || res.fx === "sheriff_hit") HUD.flash();
       if (res.data) HUD.toast(`Clue: cause ${res.data.cause}, ${res.data.timeBucket}${res.data.moved ? ", body was moved" : ""}`);
       else if (abilityId === "sheriff_shoot") HUD.toast(res.hit ? "You eliminated an impostor!" : "You shot an innocent player...");
       else HUD.toast(niceAbilityName(abilityId) + " used.");
@@ -250,6 +262,7 @@ const Game = {
     if (this.keys["s"] || this.keys["arrowdown"]) dy += 1;
     if (this.keys["a"] || this.keys["arrowleft"]) dx -= 1;
     if (this.keys["d"] || this.keys["arrowright"]) dx += 1;
+    if (this.touchVector) { dx += this.touchVector.dx; dy += this.touchVector.dy; }
     Net.emit("player:input", { dx, dy });
   },
 
@@ -258,7 +271,12 @@ const Game = {
     if (App.current !== "game") return;
     const state = App.gameState;
     const me = this.me();
-    App.amIAlive = me ? (me.alive !== false && !me.ghost) : App.amIAlive;
+    const nowAlive = me ? (me.alive !== false && !me.ghost) : App.amIAlive;
+    if (App.amIAlive === true && nowAlive === false) {
+      HUD.flash();
+      HUD.toast("You were eliminated. You're a ghost now - you can still finish tasks.");
+    }
+    App.amIAlive = nowAlive;
 
     Render.draw();
     if (state) {

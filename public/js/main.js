@@ -22,6 +22,7 @@ const App = {
 
   init() {
     for (const el of document.querySelectorAll(".screen")) this.screens[el.id.replace("screen-", "")] = el;
+    Progression.renderMenuStats();
 
     Net.socket.on("connect", () => { this.myId = Net.socket.id; });
 
@@ -77,6 +78,13 @@ const App = {
     };
   },
 
+  applyProgression(payload) {
+    const won = payload.winners.includes(this.myId);
+    const newly = Progression.recordMatchEnd({ won, faction: this.youRole.faction, role: this.youRole.role });
+    Progression.renderEndAchievements(newly);
+    Progression.renderMenuStats();
+  },
+
   showRoleCard(you) {
     const card = document.getElementById("role-card");
     card.className = "role-card faction-" + you.faction;
@@ -89,6 +97,7 @@ const App = {
   },
 
   showEndScreen(payload) {
+    this.applyProgression(payload);
     document.getElementById("end-banner").textContent = `${payload.faction} WINS`;
     document.getElementById("end-reason").textContent = payload.reason || "";
     const list = document.getElementById("end-roster");

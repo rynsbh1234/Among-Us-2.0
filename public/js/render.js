@@ -123,7 +123,14 @@ const Render = {
   },
 
   drawPlayer(ctx, p, isSelf) {
-    const alpha = p.ghost ? 0.45 : (p.cloaked ? 0.35 : 1);
+    // Smoothly fade toward the target alpha instead of snapping, so cloak/ghost
+    // transitions read as an animation rather than an instant state flip.
+    const target = p.ghost ? 0.45 : (p.cloaked ? 0.3 : 1);
+    if (!this._alpha) this._alpha = {};
+    const prev = this._alpha[p.id] !== undefined ? this._alpha[p.id] : target;
+    const alpha = prev + (target - prev) * 0.15;
+    this._alpha[p.id] = alpha;
+
     ctx.globalAlpha = alpha;
     ctx.fillStyle = p.color || "#ccc";
     ctx.beginPath(); ctx.arc(p.x, p.y, 15, 0, Math.PI * 2); ctx.fill();
@@ -133,9 +140,10 @@ const Render = {
     ctx.stroke();
     ctx.setLineDash([]);
     if (p.sick) {
+      const pulse = 20 + Math.sin(performance.now() / 180) * 4;
       ctx.strokeStyle = "#7CFC00";
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x, p.y, pulse, 0, Math.PI * 2); ctx.stroke();
     }
     if (p.doused) {
       ctx.strokeStyle = "#ff8c00";
