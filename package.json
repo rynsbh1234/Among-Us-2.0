@@ -1,7 +1,7 @@
 {
-  "name": "among-us-2.0",
-  "version": "0.1.0",
-  "description": "Original social-deduction multiplayer game (Crewline: Aphelion Station) - core gameplay, roles, tasks, sabotage, meetings, voting.",
+  "name": "crewline",
+  "version": "0.2.0",
+  "description": "Crewline - original social-deduction multiplayer game: 3 maps, 13 roles, tasks, sabotage, voice chat, accounts, replays.",
   "type": "module",
   "private": true,
   "main": "server/index.js",

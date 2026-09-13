@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>Aphelion Station</title>
+  <title>Crewline</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -12,13 +12,14 @@
     <!-- MENU -->
     <section id="screen-menu" class="screen active">
       <div class="panel narrow">
-        <h1>APHELION STATION</h1>
+        <h1>CREWLINE</h1>
         <p class="tagline">A social deduction game. Complete objectives. Observe. Lie. Investigate. Survive.</p>
         <p id="menu-stats" class="menu-stats"></p>
         <label>Your name</label>
         <input id="input-name" maxlength="16" placeholder="Player name" />
         <div class="row">
           <button id="btn-create" class="primary">Create Match</button>
+          <button id="btn-quickplay">Quick Play</button>
         </div>
         <div class="divider">or join a match</div>
         <div class="row">
@@ -26,6 +27,32 @@
           <button id="btn-join">Join</button>
         </div>
         <p id="menu-error" class="error"></p>
+
+        <div class="divider">
+          <button id="btn-toggle-profile" class="ghost small">Profile &amp; Friends</button>
+        </div>
+        <div id="profile-panel" hidden>
+          <label>Username</label>
+          <div class="row">
+            <input id="profile-username-input" maxlength="20" />
+            <button id="btn-rename">Save</button>
+          </div>
+          <p id="profile-error" class="error"></p>
+
+          <h3>Cosmetics (unlocked via achievements)</h3>
+          <div id="hat-picker" class="cosmetic-picker"></div>
+          <div id="color-picker" class="cosmetic-picker"></div>
+
+          <h3>Achievements</h3>
+          <div id="profile-achievements" class="achievement-list"></div>
+
+          <h3>Friends</h3>
+          <div class="row">
+            <input id="friend-username-input" maxlength="20" placeholder="Friend's username" />
+            <button id="btn-add-friend">Add</button>
+          </div>
+          <ul id="friend-list"></ul>
+        </div>
       </div>
     </section>
 
@@ -44,6 +71,8 @@
           </div>
           <div class="lobby-settings" id="host-settings">
             <h3>Match Settings <span class="host-only-tag">(host only)</span></h3>
+            <label>Map</label>
+            <select id="set-map"></select>
             <label>Preset</label>
             <select id="set-preset">
               <option value="CLASSIC">Classic</option>
@@ -60,6 +89,7 @@
             <input type="range" id="set-speed" min="0.5" max="2" step="0.25" value="1" />
             <label><input type="checkbox" id="set-confirm" checked /> Confirm ejects (show role)</label>
             <label><input type="checkbox" id="set-anon" /> Anonymous votes in chat</label>
+            <label><input type="checkbox" id="set-voice" checked /> Proximity voice chat</label>
 
             <h3>Roles in play</h3>
             <div class="role-pool-group">
@@ -99,6 +129,7 @@
       <canvas id="game-canvas"></canvas>
 
       <div class="hud-top-left" id="hud-role-chip"></div>
+      <button id="btn-mic" class="mic-btn" hidden>&#x1F3A4; Off</button>
       <div class="hud-top-right" id="hud-tasks"></div>
       <div class="hud-sabotage-banner" id="hud-sabotage-banner" hidden></div>
 
@@ -136,6 +167,25 @@
           <div id="touch-joystick-stick" class="touch-joystick-stick"></div>
         </div>
       </div>
+
+      <div id="replay-controls" class="replay-controls" hidden>
+        <div class="replay-row">
+          <button id="replay-playpause">Pause</button>
+          <input id="replay-scrub" type="range" min="0" max="1000" value="0" />
+          <span id="replay-clock">00:00</span>
+          <select id="replay-speed">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+          </select>
+          <button id="replay-follow-prev">◀</button>
+          <span id="replay-follow-name">-</span>
+          <button id="replay-follow-next">▶</button>
+          <button id="replay-close" class="ghost">Close Replay</button>
+        </div>
+        <div id="replay-events" class="replay-events"></div>
+      </div>
     </section>
 
     <!-- MEETING -->
@@ -171,6 +221,7 @@
         <h3>Roles</h3>
         <ul id="end-roster"></ul>
         <div id="end-achievements"></div>
+        <button id="btn-watch-replay" class="wide">Watch Replay</button>
         <h3>Timeline</h3>
         <div id="end-timeline" class="timeline"></div>
         <button id="btn-play-again" class="primary wide">Back to Lobby</button>
@@ -182,7 +233,9 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/net.js"></script>
   <script src="/js/roles-data.js"></script>
-  <script src="/js/progression.js"></script>
+  <script src="/js/maps-data.js"></script>
+  <script src="/js/cosmetics-data.js"></script>
+  <script src="/js/account.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/render.js"></script>
   <script src="/js/ui/lobby.js"></script>
@@ -190,5 +243,7 @@
   <script src="/js/ui/meeting.js"></script>
   <script src="/js/game.js"></script>
   <script src="/js/touch.js"></script>
+  <script src="/js/replay.js"></script>
+  <script src="/js/voice.js"></script>
 </body>
 </html>

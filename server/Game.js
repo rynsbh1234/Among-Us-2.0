@@ -1,9 +1,7 @@
-import {
-  MAP_DATA, TILE, VENTS, SABOTAGE_PANELS, TASK_SPOTS, EMERGENCY_BUTTON, SPAWN_POINT,
-  isWalkableWorld, roomAt, tileToWorld,
-} from "./map.js";
+import { getMap } from "./maps/index.js";
 import { ROLES, FACTIONS, abilityDef, publicRoleInfo } from "./roles.js";
 import { dist, shuffle, nextId } from "./utils.js";
+import * as Accounts from "./accounts.js";
 
 const TICK_MS = 50; // 20Hz
 const BASE_SPEED = 150; // px/s
@@ -15,6 +13,7 @@ const REACTOR_TIME_MS = 45000;
 const O2_TIME_MS = 60000;
 const COMMS_TIME_MS = 30000;
 const SABOTAGE_GLOBAL_COOLDOWN_MS = 15000;
+const REPLAY_FRAME_EVERY_N_TICKS = 20; // 50ms * 20 = 1Hz replay recording
 
 const PLAYER_COLORS = [
   "#e05252", "#4d8fe0", "#3fae5c", "#e0c23f", "#e07fdc", "#e0873f",
@@ -26,11 +25,14 @@ export class Game {
     this.code = code;
     this.io = io;
     this.settings = settings;
+    this.map = getMap(settings.mapId);
     this.onEnded = onEnded;
     this.startedAt = Date.now();
     this.ended = false;
     this.timeline = [];
+    this.replayFrames = [];
     this.bodies = [];
+    this.voiceReady = new Set();
     this.emergencyUsed = {};
     this.nextSabotageAt = 0;
     this.sabotages = {
@@ -42,10 +44,14 @@ export class Game {
     this.taskDone = 0;
 
     this.players = new Map();
+    const usedColors = new Set();
     players.forEach((p, i) => {
+      let color = p.preferredColor && !usedColors.has(p.preferredColor) ? p.preferredColor : null;
+      if (!color) color = PLAYER_COLORS.find((c) => !usedColors.has(c)) || PLAYER_COLORS[i % PLAYER_COLORS.length];
+      usedColors.add(color);
       this.players.set(p.id, {
-        id: p.id, name: p.name, color: PLAYER_COLORS[i % PLAYER_COLORS.length],
-        x: SPAWN_POINT.x, y: SPAWN_POINT.y,
+        id: p.id, name: p.name, color, hat: p.equippedHat || null, accountId: p.accountId || null,
+        x: this.map.spawnPoint.x, y: this.map.spawnPoint.y,
         alive: true, ghost: false,
         role: "CREWMATE", faction: FACTIONS.CREW,
         input: { dx: 0, dy: 0 },
@@ -126,15 +132,15 @@ export class Game {
 
   _spawnAll() {
     for (const p of this.players.values()) {
-      p.x = SPAWN_POINT.x + (Math.random() * 60 - 30);
-      p.y = SPAWN_POINT.y + (Math.random() * 60 - 30);
+      p.x = this.map.spawnPoint.x + (Math.random() * 60 - 30);
+      p.y = this.map.spawnPoint.y + (Math.random() * 60 - 30);
     }
   }
 
   _assignTasks() {
     for (const p of this.players.values()) {
       const isFake = p.faction !== FACTIONS.CREW;
-      const spots = shuffle(TASK_SPOTS).slice(0, Math.min(this.settings.taskCount, TASK_SPOTS.length));
+      const spots = shuffle(this.map.taskSpots).slice(0, Math.min(this.settings.taskCount, this.map.taskSpots.length));
       p.tasks = spots.map((s) => ({ id: s.id, type: s.type, room: s.room, label: s.label, x: s.x, y: s.y, done: false, isFake }));
       if (!isFake) this.taskTotal += p.tasks.length;
     }
@@ -143,12 +149,12 @@ export class Game {
   // ---------- lifecycle ----------
 
   buildStartPayloads() {
-    const roster = [...this.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color }));
+    const roster = [...this.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, hat: p.hat }));
     const payloads = {};
     for (const p of this.players.values()) {
       const roleMeta = ROLES[p.role];
       payloads[p.id] = {
-        map: MAP_DATA,
+        map: this.map,
         settings: this.settings,
         roster,
         you: {
@@ -170,10 +176,51 @@ export class Game {
   markDisconnected(id) {
     const p = this.players.get(id);
     if (p) p.connected = false;
+    if (this.voiceReady.delete(id)) this._recomputeVoiceGroups();
   }
   markReconnected(id) {
     const p = this.players.get(id);
     if (p) p.connected = true;
+  }
+
+  // ---------- voice chat (WebRTC signaling relay) ----------
+
+  handleVoiceReady(id) {
+    if (!this.settings.voiceChatEnabled) return { error: "Voice chat is off for this match." };
+    const p = this.players.get(id);
+    if (!p) return { error: "Not in match." };
+    this.voiceReady.add(id);
+    this._recomputeVoiceGroups();
+    return { ok: true };
+  }
+
+  handleVoiceLeave(id) {
+    if (this.voiceReady.delete(id)) this._recomputeVoiceGroups();
+  }
+
+  // Only relay signaling between players who are supposed to be in the same
+  // voice group (both alive, or both ghosts) - prevents a stale/forged peer
+  // handshake from crossing the living/dead voice boundary.
+  handleVoiceSignal(fromId, toId, data) {
+    const a = this.players.get(fromId);
+    const b = this.players.get(toId);
+    if (!a || !b || a.ghost !== b.ghost) return;
+    this.io.to(toId).emit("voice:signal", { from: fromId, data });
+  }
+
+  // Full-sync approach: whenever group membership could have changed, tell every
+  // voice-ready player in each group who they should currently be connected to.
+  // Clients diff this against their own open peer connections and self-heal.
+  _recomputeVoiceGroups() {
+    if (!this.settings.voiceChatEnabled) return;
+    const living = [];
+    const ghosts = [];
+    for (const p of this.players.values()) {
+      if (!this.voiceReady.has(p.id)) continue;
+      (p.ghost ? ghosts : living).push(p.id);
+    }
+    for (const id of living) this.io.to(id).emit("voice:peers", { peers: living.filter((x) => x !== id) });
+    for (const id of ghosts) this.io.to(id).emit("voice:peers", { peers: ghosts.filter((x) => x !== id) });
   }
 
   // ---------- input handlers ----------
@@ -191,11 +238,14 @@ export class Game {
     if (!p || !p.alive || p.ventId || this.meeting) return { error: "Can't vent right now." };
     const roleMeta = ROLES[p.role];
     if (!roleMeta.abilities.some((a) => a.id === "vent_enter")) return { error: "Your role can't use vents." };
-    const vent = VENTS.find((v) => dist(p.x, p.y, ...tileXY(v)) <= VENT_ENTER_RANGE);
+    const vent = this.map.vents.find((v) => {
+      const w = this.map.tileToWorld(v.x, v.y);
+      return dist(p.x, p.y, w.x, w.y) <= VENT_ENTER_RANGE;
+    });
     if (!vent) return { error: "No vent nearby." };
     p.ventId = vent.id;
     p.ventGroup = vent.group;
-    const options = VENTS.filter((v) => v.group === vent.group && v.id !== vent.id)
+    const options = this.map.vents.filter((v) => v.group === vent.group && v.id !== vent.id)
       .map((v) => ({ id: v.id, room: v.room }));
     return { ok: true, options };
   }
@@ -203,9 +253,9 @@ export class Game {
   handleVentTravel(id, toVentId) {
     const p = this.players.get(id);
     if (!p || !p.ventId) return { error: "Not in a vent." };
-    const target = VENTS.find((v) => v.id === toVentId && v.group === p.ventGroup);
+    const target = this.map.vents.find((v) => v.id === toVentId && v.group === p.ventGroup);
     if (!target) return { error: "Invalid vent." };
-    const w = tileToWorld(target.x, target.y);
+    const w = this.map.tileToWorld(target.x, target.y);
     p.x = w.x; p.y = w.y;
     p.ventId = null; p.ventGroup = null;
     return { ok: true };
@@ -343,7 +393,7 @@ export class Game {
     if (!target.alive) return;
     target.alive = false;
     target.ghost = true;
-    const room = roomAt(target.x, target.y);
+    const room = this.map.roomAt(target.x, target.y);
     const body = {
       id: nextId("body"), x: target.x, y: target.y, room: room ? room.name : "the corridor",
       victimId: target.id, victimName: target.name, victimRole: target.role,
@@ -351,6 +401,7 @@ export class Game {
     };
     this.bodies.push(body);
     this.timeline.push({ t: Date.now() - this.startedAt, text: `${target.name} was eliminated near ${body.room}.` });
+    this._recomputeVoiceGroups();
     this._checkWinConditions();
   }
 
@@ -368,7 +419,8 @@ export class Game {
     const p = this.players.get(id);
     if (!p || !p.alive || this.meeting) return { error: "Can't call a meeting right now." };
     if (this.sabotages.comms.active) return { error: "Comms are down." };
-    if (dist(p.x, p.y, EMERGENCY_BUTTON.x * TILE + TILE / 2, EMERGENCY_BUTTON.y * TILE + TILE / 2) > EMERGENCY_RANGE) {
+    const eb = this.map.tileToWorld(this.map.emergencyButton.x, this.map.emergencyButton.y);
+    if (dist(p.x, p.y, eb.x, eb.y) > EMERGENCY_RANGE) {
       return { error: "You need to be at the emergency button." };
     }
     const used = this.emergencyUsed[id] || 0;
@@ -445,14 +497,15 @@ export class Game {
   handleSabotageFix(id, panelId) {
     const p = this.players.get(id);
     if (!p || !p.alive) return { error: "Not available." };
-    const panel = SABOTAGE_PANELS.find((x) => x.id === panelId);
+    const panel = this.map.sabotagePanels.find((x) => x.id === panelId);
     if (!panel) return { error: "Invalid panel." };
-    if (dist(p.x, p.y, ...tileXY(panel)) > SABOTAGE_FIX_RANGE) return { error: "Too far from panel." };
+    const pw = this.map.tileToWorld(panel.x, panel.y);
+    if (dist(p.x, p.y, pw.x, pw.y) > SABOTAGE_FIX_RANGE) return { error: "Too far from panel." };
     const sab = this.sabotages[panel.type];
     if (!sab || !sab.active) return { error: "Nothing to fix." };
     if (panel.type === "reactor" || panel.type === "o2") {
       sab.panelsFixed.add(panelId);
-      const required = SABOTAGE_PANELS.filter((x) => x.type === panel.type).length;
+      const required = this.map.sabotagePanels.filter((x) => x.type === panel.type).length;
       if (sab.panelsFixed.size >= required) sab.active = false;
     } else {
       sab.active = false;
@@ -495,11 +548,11 @@ export class Game {
         const nx = p.x + dx * speed * dt;
         const ny = p.y + dy * speed * dt;
         if (p.ghost) {
-          p.x = Math.max(20, Math.min(MAP_DATA.gridW * TILE - 20, nx));
-          p.y = Math.max(20, Math.min(MAP_DATA.gridH * TILE - 20, ny));
+          p.x = Math.max(20, Math.min(this.map.gridW * this.map.tile - 20, nx));
+          p.y = Math.max(20, Math.min(this.map.gridH * this.map.tile - 20, ny));
         } else {
-          if (isWalkableWorld(nx, p.y)) p.x = nx;
-          if (isWalkableWorld(p.x, ny)) p.y = ny;
+          if (this.map.isWalkableWorld(nx, p.y)) p.x = nx;
+          if (this.map.isWalkableWorld(p.x, ny)) p.y = ny;
         }
       }
     }
@@ -527,6 +580,26 @@ export class Game {
 
     if (this.ended) return;
     this._broadcastState();
+
+    this._tickCount = (this._tickCount || 0) + 1;
+    if (this._tickCount % REPLAY_FRAME_EVERY_N_TICKS === 0) this._recordReplayFrame();
+  }
+
+  // Post-match replay: a low-rate positional recording (not the live 20Hz tick), reusing
+  // the same event timeline for the scrub-through UI's event list. Session-only, in memory.
+  _recordReplayFrame() {
+    this.replayFrames.push({
+      t: Date.now() - this.startedAt,
+      players: [...this.players.values()].map((p) => ({
+        id: p.id, name: p.name, color: p.color, hat: p.hat,
+        x: Math.round(p.x), y: Math.round(p.y), alive: p.alive, ghost: p.ghost,
+      })),
+      bodies: this.bodies.filter((b) => !b.cleaned).map((b) => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y) })),
+      sabotages: {
+        reactor: this.sabotages.reactor.active, o2: this.sabotages.o2.active,
+        lights: this.sabotages.lights.active, comms: this.sabotages.comms.active,
+      },
+    });
   }
 
   _resolveVotes() {
@@ -556,6 +629,7 @@ export class Game {
       ejectedName = ejected.name;
       ejected.alive = false;
       ejected.ghost = true;
+      this._recomputeVoiceGroups();
       const roleMeta = ROLES[ejected.role];
       revealText = this.settings.confirmEjects
         ? `${ejected.name} was the ${roleMeta.name}.`
@@ -623,8 +697,22 @@ export class Game {
 
     this._broadcast("game:over", {
       faction: result.faction, reason: result.reason, winners, roster,
-      timeline: this.timeline,
+      timeline: this.timeline, replayFrames: this.replayFrames,
     });
+
+    // Record progression server-side per account (not client-trusted).
+    for (const p of this.players.values()) {
+      if (!p.accountId) continue;
+      const newly = Accounts.recordMatchResult(p.accountId, {
+        won: winners.includes(p.id), faction: p.faction, role: p.role,
+      });
+      const account = Accounts.getAccount(p.accountId);
+      this.io.to(p.id).emit("account:matchResult", {
+        newlyUnlocked: newly,
+        account: Accounts.publicView(account),
+      });
+    }
+
     this.onEnded && this.onEnded();
   }
 
@@ -654,16 +742,21 @@ export class Game {
         continue;
       }
       if (p.ghost) {
-        if (viewer.ghost) players.push({ id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, ghost: true });
+        if (viewer.ghost) players.push({ id: p.id, name: p.name, color: p.color, hat: p.hat, x: p.x, y: p.y, ghost: true });
         continue;
       }
       if (p.ventId) continue; // hidden while inside vent tunnels
       const cloaked = p.effects.cloaked && p.effects.cloaked > now;
       if (cloaked && viewer.faction !== FACTIONS.IMPOSTOR) continue;
+      const poison = p.effects.poisoned;
+      const isSick = !!(poison && poison.visibleAt <= now && poison.expiresAt > now);
+      const sickIntensity = isSick
+        ? Math.min(1, Math.max(0, (now - poison.visibleAt) / (poison.expiresAt - poison.visibleAt)))
+        : 0;
       players.push({
-        id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, ghost: false,
+        id: p.id, name: p.name, color: p.color, hat: p.hat, x: p.x, y: p.y, ghost: false,
         cloaked: !!cloaked,
-        sick: !!(p.effects.poisoned && p.effects.poisoned.visibleAt <= now && p.effects.poisoned.expiresAt > now),
+        sick: isSick, sickIntensity,
         doused: viewer.id === p.id ? p.doused : (viewer.role === "ARSONIST" ? p.doused : undefined),
       });
     }
@@ -672,7 +765,7 @@ export class Game {
     if (viewer.tracking && viewer.tracking.expiresAt > now) {
       const t = this.players.get(viewer.tracking.targetId);
       if (t && t.alive) {
-        const r = roomAt(t.x, t.y);
+        const r = this.map.roomAt(t.x, t.y);
         tracking = { targetName: t.name, room: r ? r.name : "unknown" };
       }
     } else if (viewer.tracking) {
@@ -704,13 +797,9 @@ export class Game {
 
   _selfView(p, now) {
     return {
-      id: p.id, name: p.name, color: p.color, x: p.x, y: p.y,
+      id: p.id, name: p.name, color: p.color, hat: p.hat, x: p.x, y: p.y,
       alive: p.alive, ghost: p.ghost, inVent: !!p.ventId,
       cloaked: !!(p.effects.cloaked && p.effects.cloaked > now),
     };
   }
-}
-
-function tileXY(obj) {
-  return [obj.x * TILE + TILE / 2, obj.y * TILE + TILE / 2];
 }

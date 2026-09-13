@@ -20,6 +20,8 @@ const Lobby = {
     settingsPanel.classList.toggle("disabled", state.hostId !== App.myId);
 
     const s = state.settings;
+    const mapSelect = document.getElementById("set-map");
+    if (document.activeElement !== mapSelect) mapSelect.value = s.mapId;
     document.getElementById("set-impostors").value = s.impostorCount;
     document.getElementById("val-impostors").textContent = s.impostorCount;
     document.getElementById("set-tasks").value = s.taskCount;
@@ -28,6 +30,7 @@ const Lobby = {
     document.getElementById("val-speed").textContent = s.movementSpeed.toFixed(2) + "x";
     document.getElementById("set-confirm").checked = s.confirmEjects;
     document.getElementById("set-anon").checked = s.anonymousVotes;
+    document.getElementById("set-voice").checked = s.voiceChatEnabled !== false;
 
     this.syncRolePoolChecks("pool-crew", s.crewRolePool);
     this.syncRolePoolChecks("pool-impostor", s.impostorRolePool);
@@ -41,6 +44,16 @@ const Lobby = {
     document.getElementById("btn-ready").onclick = () => Net.emit("lobby:toggleReady");
     document.getElementById("btn-start").onclick = () => Net.emit("lobby:start");
 
+    const mapSelect = document.getElementById("set-map");
+    mapSelect.innerHTML = "";
+    for (const m of MAP_LIST) {
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = m.name;
+      mapSelect.appendChild(opt);
+    }
+    mapSelect.addEventListener("change", (e) => Net.emit("lobby:updateSettings", { mapId: e.target.value }));
+
     document.getElementById("set-preset").onchange = (e) => Net.emit("lobby:applyPreset", e.target.value);
 
     const push = () => {
@@ -50,9 +63,10 @@ const Lobby = {
         movementSpeed: Number(document.getElementById("set-speed").value),
         confirmEjects: document.getElementById("set-confirm").checked,
         anonymousVotes: document.getElementById("set-anon").checked,
+        voiceChatEnabled: document.getElementById("set-voice").checked,
       });
     };
-    ["set-impostors", "set-tasks", "set-speed", "set-confirm", "set-anon"].forEach((id) => {
+    ["set-impostors", "set-tasks", "set-speed", "set-confirm", "set-anon", "set-voice"].forEach((id) => {
       document.getElementById(id).addEventListener("change", push);
     });
 

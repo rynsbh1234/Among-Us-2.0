@@ -18,13 +18,14 @@ const Render = {
     return { w: m.gridW * m.tile, h: m.gridH * m.tile };
   },
 
-  draw() {
+  draw(overrideState, followId) {
     const ctx = this.ctx;
     const map = App.map;
-    const state = App.gameState;
+    const state = overrideState || App.gameState;
+    const focusId = followId || App.myId;
     if (!map || !ctx) return;
 
-    const me = state && state.players.find((p) => p.id === App.myId);
+    const me = state && state.players.find((p) => p.id === focusId);
     const camX = me ? me.x : (map.gridW * map.tile) / 2;
     const camY = me ? me.y : (map.gridH * map.tile) / 2;
     const cw = this.canvas.width, ch = this.canvas.height;
@@ -89,8 +90,8 @@ const Render = {
       ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
     }
 
-    // task spots (only mine, undone)
-    if (App.myTasks) {
+    // task spots (only mine, undone; not applicable during replay)
+    if (!overrideState && App.myTasks) {
       for (const t of App.myTasks) {
         if (t.done || t.isFake) continue;
         const wx = t.x * tile + tile / 2, wy = t.y * tile + tile / 2;
@@ -100,36 +101,54 @@ const Render = {
       }
     }
 
-    // bodies
+    // bodies (freshly-discovered ones get a brief expanding ring so a kill nearby reads as an event)
     if (state) {
+      if (!this._seenBodies) this._seenBodies = {};
+      const nowT = performance.now();
       for (const b of state.bodies) {
+        if (this._seenBodies[b.id] === undefined) this._seenBodies[b.id] = nowT;
+        const age = nowT - this._seenBodies[b.id];
         ctx.fillStyle = "#8b1a1a";
         ctx.beginPath(); ctx.ellipse(b.x, b.y, 16, 10, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "#fff"; ctx.font = "11px sans-serif";
         ctx.fillText("!", b.x - 2, b.y - 14);
+        if (age < 900) {
+          const p = age / 900;
+          ctx.strokeStyle = `rgba(224,82,82,${1 - p})`;
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(b.x, b.y, 16 + p * 26, 0, Math.PI * 2); ctx.stroke();
+        }
       }
     }
 
     // players
     if (state) {
       for (const p of state.players) {
-        this.drawPlayer(ctx, p, p.id === App.myId);
+        this.drawPlayer(ctx, p, p.id === focusId);
       }
     }
 
     ctx.restore();
 
-    this.drawMinimap(state);
+    this.drawMinimap(state, focusId);
   },
 
   drawPlayer(ctx, p, isSelf) {
     // Smoothly fade toward the target alpha instead of snapping, so cloak/ghost
-    // transitions read as an animation rather than an instant state flip.
+    // transitions read as an animation rather than an instant state flip. While
+    // mid-fade, flash a grey "desaturated" wash under the token for a cloak-sheet feel.
     const target = p.ghost ? 0.45 : (p.cloaked ? 0.3 : 1);
     if (!this._alpha) this._alpha = {};
     const prev = this._alpha[p.id] !== undefined ? this._alpha[p.id] : target;
-    const alpha = prev + (target - prev) * 0.15;
+    const alpha = prev + (target - prev) * 0.1;
     this._alpha[p.id] = alpha;
+    const transitionAmount = Math.min(1, Math.abs(target - alpha) * 4);
+
+    if (transitionAmount > 0.02) {
+      ctx.globalAlpha = transitionAmount * 0.5;
+      ctx.fillStyle = "#888";
+      ctx.beginPath(); ctx.arc(p.x, p.y, 17, 0, Math.PI * 2); ctx.fill();
+    }
 
     ctx.globalAlpha = alpha;
     ctx.fillStyle = p.color || "#ccc";
@@ -140,9 +159,13 @@ const Render = {
     ctx.stroke();
     ctx.setLineDash([]);
     if (p.sick) {
-      const pulse = 20 + Math.sin(performance.now() / 180) * 4;
-      ctx.strokeStyle = "#7CFC00";
-      ctx.lineWidth = 2;
+      // pulses faster and redder as the poison gets closer to killing them
+      const intensity = p.sickIntensity || 0;
+      const speed = 180 - intensity * 90;
+      const pulse = 20 + Math.sin(performance.now() / speed) * (4 + intensity * 4);
+      const g = Math.round(255 - intensity * 140);
+      ctx.strokeStyle = `rgb(124,${g},0)`;
+      ctx.lineWidth = 2 + intensity * 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, pulse, 0, Math.PI * 2); ctx.stroke();
     }
     if (p.doused) {
@@ -150,6 +173,7 @@ const Render = {
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, Math.PI * 2); ctx.stroke();
     }
+    if (p.hat && !p.ghost) this.drawHat(ctx, p.hat, p.x, p.y);
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#fff";
     ctx.font = "12px sans-serif";
@@ -158,7 +182,67 @@ const Render = {
     ctx.textAlign = "left";
   },
 
-  drawMinimap(state) {
+  // Cosmetic-only, drawn with plain canvas primitives (no image assets needed).
+  drawHat(ctx, hat, x, y) {
+    ctx.globalAlpha = 1;
+    const top = y - 15;
+    switch (hat) {
+      case "cap":
+        ctx.fillStyle = "#2f4a5c";
+        ctx.beginPath(); ctx.arc(x, top, 10, Math.PI, 0); ctx.fill();
+        ctx.fillRect(x, top - 2, 14, 4);
+        break;
+      case "party_hat":
+        ctx.fillStyle = "#e07fdc";
+        ctx.beginPath(); ctx.moveTo(x, top - 20); ctx.lineTo(x - 10, top); ctx.lineTo(x + 10, top); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#ffd24f";
+        ctx.beginPath(); ctx.arc(x, top - 20, 3, 0, Math.PI * 2); ctx.fill();
+        break;
+      case "top_hat":
+        ctx.fillStyle = "#1a1a1a";
+        ctx.fillRect(x - 9, top - 16, 18, 16);
+        ctx.fillRect(x - 13, top - 2, 26, 4);
+        break;
+      case "halo":
+        ctx.strokeStyle = "#ffe98a";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(x, top - 12, 10, 4, 0, 0, Math.PI * 2); ctx.stroke();
+        break;
+      case "devil_horns":
+        ctx.fillStyle = "#a01818";
+        ctx.beginPath(); ctx.moveTo(x - 9, top); ctx.lineTo(x - 12, top - 12); ctx.lineTo(x - 3, top - 2); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x + 9, top); ctx.lineTo(x + 12, top - 12); ctx.lineTo(x + 3, top - 2); ctx.closePath(); ctx.fill();
+        break;
+      case "flower":
+        ctx.fillStyle = "#ff6fae";
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * 5, top - 8 + Math.sin(a) * 5, 3.5, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = "#ffd24f";
+        ctx.beginPath(); ctx.arc(x, top - 8, 3, 0, Math.PI * 2); ctx.fill();
+        break;
+      case "jester_hat":
+        ctx.fillStyle = "#4fd1c5";
+        ctx.beginPath(); ctx.moveTo(x - 10, top); ctx.lineTo(x - 12, top - 16); ctx.lineTo(x - 2, top); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#e0873f";
+        ctx.beginPath(); ctx.moveTo(x + 10, top); ctx.lineTo(x + 12, top - 16); ctx.lineTo(x + 2, top); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#ffd24f";
+        ctx.beginPath(); ctx.arc(x - 12, top - 16, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 12, top - 16, 2.5, 0, Math.PI * 2); ctx.fill();
+        break;
+      case "flame_hat":
+        ctx.fillStyle = "#ff7a1a";
+        ctx.beginPath(); ctx.moveTo(x, top - 18); ctx.quadraticCurveTo(x + 9, top - 6, x, top); ctx.quadraticCurveTo(x - 9, top - 6, x, top - 18); ctx.fill();
+        ctx.fillStyle = "#ffd24f";
+        ctx.beginPath(); ctx.moveTo(x, top - 12); ctx.quadraticCurveTo(x + 4, top - 6, x, top - 2); ctx.quadraticCurveTo(x - 4, top - 6, x, top - 12); ctx.fill();
+        break;
+      default:
+        break;
+    }
+  },
+
+  drawMinimap(state, focusId) {
     const ctx = this.ctx;
     const map = App.map;
     const size = 170, pad = 16;
@@ -175,10 +259,10 @@ const Render = {
     }
     if (state) {
       for (const p of state.players) {
-        if (p.ghost && p.id !== App.myId) continue;
-        ctx.fillStyle = p.id === App.myId ? "#fff" : p.color;
+        if (p.ghost && p.id !== focusId) continue;
+        ctx.fillStyle = p.id === focusId ? "#fff" : p.color;
         ctx.beginPath();
-        ctx.arc(x0 + p.x * scale, y0 + p.y * scale, p.id === App.myId ? 4 : 3, 0, Math.PI * 2);
+        ctx.arc(x0 + p.x * scale, y0 + p.y * scale, p.id === focusId ? 4 : 3, 0, Math.PI * 2);
         ctx.fill();
       }
     }

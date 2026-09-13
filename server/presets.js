@@ -1,7 +1,10 @@
 import { CREW_ROLE_IDS, IMPOSTOR_ROLE_IDS, NEUTRAL_ROLE_IDS } from "./roles.js";
+import { MAPS, DEFAULT_MAP_ID } from "./maps/index.js";
 
 // Lobby setting presets. Hosts can start from one of these and then tweak individual values.
 export const DEFAULT_SETTINGS = {
+  mapId: DEFAULT_MAP_ID,
+  voiceChatEnabled: true,
   impostorCount: 2,
   crewRolePool: ["ENGINEER", "SHERIFF", "MEDIC", "TRACKER", "GUARDIAN", "FORENSIC"],
   impostorRolePool: ["SWOOPER", "POISONER", "JANITOR"],
@@ -64,5 +67,6 @@ export function mergeSettings(base, overrides = {}) {
   merged.crewRolePool = sanitizePool(merged.crewRolePool, CREW_ROLE_IDS, base.crewRolePool);
   merged.impostorRolePool = sanitizePool(merged.impostorRolePool, IMPOSTOR_ROLE_IDS, base.impostorRolePool);
   merged.neutralRoles = sanitizePool(merged.neutralRoles, NEUTRAL_ROLE_IDS, base.neutralRoles);
+  merged.mapId = Object.keys(MAPS).includes(merged.mapId) ? merged.mapId : DEFAULT_MAP_ID;
   return merged;
 }

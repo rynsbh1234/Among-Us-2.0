@@ -119,10 +119,12 @@ const MeetingUI = {
     const box = document.getElementById("vote-result");
     const scene = document.getElementById("ejection-scene");
 
+    const verb = (App.map && App.map.ejectionVerb) || "was ejected";
+
     const finish = () => {
       box.hidden = false;
       box.textContent = payload.ejectedId
-        ? `${payload.ejectedName} was ejected. ${payload.revealText}`
+        ? `${payload.ejectedName} ${verb}. ${payload.revealText}`
         : "No one was ejected.";
       setTimeout(() => {
         if (App.current === "meeting") App.showScreen("game");
@@ -137,7 +139,7 @@ const MeetingUI = {
     dot.style.animation = "none";
     void dot.offsetHeight;
     dot.style.animation = "";
-    text.textContent = `${payload.ejectedName} was ejected...`;
+    text.textContent = `${payload.ejectedName} ${verb}...`;
     scene.hidden = false;
     setTimeout(() => {
       scene.hidden = true;

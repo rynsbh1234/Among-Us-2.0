@@ -78,10 +78,11 @@ const HUD = {
     const active = state && (state.sabotages.reactor.active || state.sabotages.o2.active || state.sabotages.lights.active || state.sabotages.comms.active);
     if (!active) { banner.hidden = true; return; }
     banner.hidden = false;
-    if (state.sabotages.reactor.active) banner.textContent = "REACTOR MELTDOWN - FIX IMMEDIATELY";
-    else if (state.sabotages.o2.active) banner.textContent = "OXYGEN DEPLETING - FIX IMMEDIATELY";
-    else if (state.sabotages.lights.active) banner.textContent = "LIGHTS SABOTAGED";
-    else banner.textContent = "COMMS SABOTAGED";
+    const names = (App.map && App.map.sabotageNames) || {};
+    if (state.sabotages.reactor.active) banner.textContent = (names.reactor || "REACTOR MELTDOWN") + " - FIX IMMEDIATELY";
+    else if (state.sabotages.o2.active) banner.textContent = (names.o2 || "OXYGEN DEPLETING") + " - FIX IMMEDIATELY";
+    else if (state.sabotages.lights.active) banner.textContent = names.lights || "LIGHTS SABOTAGED";
+    else banner.textContent = names.comms || "COMMS SABOTAGED";
   },
 };
 
@@ -107,6 +108,8 @@ const Game = {
     document.getElementById("hud-sabotage-banner").hidden = true;
 
     if (App.youRole.faction === "IMPOSTOR") document.getElementById("btn-sabotage").hidden = false;
+
+    document.getElementById("btn-mic").hidden = App.settings.voiceChatEnabled === false;
 
     if (!this.started) {
       this.started = true;
@@ -256,7 +259,7 @@ const Game = {
   },
 
   sendInput() {
-    if (App.current !== "game") return;
+    if (App.current !== "game" || (typeof Replay !== "undefined" && Replay.active)) return;
     let dx = 0, dy = 0;
     if (this.keys["w"] || this.keys["arrowup"]) dy -= 1;
     if (this.keys["s"] || this.keys["arrowdown"]) dy += 1;
@@ -268,7 +271,7 @@ const Game = {
 
   loop() {
     requestAnimationFrame(() => this.loop());
-    if (App.current !== "game") return;
+    if (App.current !== "game" || (typeof Replay !== "undefined" && Replay.active)) return;
     const state = App.gameState;
     const me = this.me();
     const nowAlive = me ? (me.alive !== false && !me.ghost) : App.amIAlive;

@@ -14,6 +14,7 @@ export class Room {
     this.settings = { ...DEFAULT_SETTINGS };
     this.phase = "LOBBY"; // LOBBY | GAME
     this.game = null;
+    this.isPublic = false;
   }
 
   publicState() {
@@ -36,11 +37,11 @@ export class RoomManager {
     this.rooms = new Map();
   }
 
-  create(hostId, hostName) {
+  create(hostId, hostName, accountId) {
     let code;
     do { code = genCode(); } while (this.rooms.has(code));
     const room = new Room(code, hostId);
-    room.players.set(hostId, { id: hostId, name: hostName.slice(0, 16) || "Host", ready: false });
+    room.players.set(hostId, { id: hostId, name: hostName.slice(0, 16) || "Host", ready: false, accountId: accountId || null });
     this.rooms.set(code, room);
     return room;
   }
@@ -49,13 +50,25 @@ export class RoomManager {
     return this.rooms.get((code || "").toUpperCase());
   }
 
-  join(code, id, name) {
+  join(code, id, name, accountId) {
     const room = this.get(code);
     if (!room) return { error: "Room not found." };
     if (room.phase !== "LOBBY") return { error: "That match already started." };
     if (room.players.size >= MAX_PLAYERS) return { error: "Room is full." };
-    room.players.set(id, { id, name: (name || "Player").slice(0, 16), ready: false });
+    room.players.set(id, { id, name: (name || "Player").slice(0, 16), ready: false, accountId: accountId || null });
     return { room };
+  }
+
+  // Quick Play: join an existing open public lobby, or start a new one.
+  quickPlay(id, name, accountId) {
+    let room = [...this.rooms.values()].find((r) => r.isPublic && r.phase === "LOBBY" && r.players.size < MAX_PLAYERS);
+    if (!room) {
+      room = this.create(id, name, accountId);
+      room.isPublic = true;
+      return { room, isHost: true };
+    }
+    const res = this.join(room.code, id, name, accountId);
+    return { room: res.room, isHost: false };
   }
 
   leave(code, id) {

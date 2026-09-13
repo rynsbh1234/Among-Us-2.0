@@ -22,7 +22,6 @@ const App = {
 
   init() {
     for (const el of document.querySelectorAll(".screen")) this.screens[el.id.replace("screen-", "")] = el;
-    Progression.renderMenuStats();
 
     Net.socket.on("connect", () => { this.myId = Net.socket.id; });
 
@@ -35,6 +34,10 @@ const App = {
       const code = document.getElementById("input-code").value.trim().toUpperCase();
       if (!code) return;
       Net.emit("lobby:join", { code, name: this.name });
+    };
+    document.getElementById("btn-quickplay").onclick = () => {
+      this.name = document.getElementById("input-name").value.trim() || "Player";
+      Net.emit("lobby:quickPlay", { name: this.name });
     };
 
     Net.on("lobby:created", ({ code }) => { this.roomCode = code; this.showScreen("lobby"); });
@@ -71,18 +74,18 @@ const App = {
 
     Net.on("game:state", (state) => { this.gameState = state; });
 
-    Net.on("game:over", (payload) => this.showEndScreen(payload));
+    Net.on("game:over", (payload) => {
+      Voice.disable();
+      this.showEndScreen(payload);
+    });
 
     document.getElementById("btn-play-again").onclick = () => {
       this.showScreen("lobby");
     };
-  },
 
-  applyProgression(payload) {
-    const won = payload.winners.includes(this.myId);
-    const newly = Progression.recordMatchEnd({ won, faction: this.youRole.faction, role: this.youRole.role });
-    Progression.renderEndAchievements(newly);
-    Progression.renderMenuStats();
+    document.getElementById("btn-watch-replay").onclick = () => {
+      Replay.start(this.lastReplayFrames, this.lastTimeline);
+    };
   },
 
   showRoleCard(you) {
@@ -97,7 +100,7 @@ const App = {
   },
 
   showEndScreen(payload) {
-    this.applyProgression(payload);
+    document.getElementById("end-achievements").innerHTML = "";
     document.getElementById("end-banner").textContent = `${payload.faction} WINS`;
     document.getElementById("end-reason").textContent = payload.reason || "";
     const list = document.getElementById("end-roster");
@@ -116,6 +119,11 @@ const App = {
       d.textContent = `[${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}] ${e.text}`;
       tl.appendChild(d);
     }
+
+    this.lastReplayFrames = payload.replayFrames || [];
+    this.lastTimeline = payload.timeline || [];
+    document.getElementById("btn-watch-replay").disabled = this.lastReplayFrames.length === 0;
+
     this.showScreen("end");
   },
 };
